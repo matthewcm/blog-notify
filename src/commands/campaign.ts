@@ -26,14 +26,6 @@ export type PostItem = {
   slug: string;
   [key: string]: string | string[];
 };
-
-export type EmailRequest = {
-  method: "POST" | "get" | "GET" | "post" | "put" | "PUT" | "patch" | "PATCH" | "delete" | "DELETE" | undefined
-  url: string,
-  body: any
-}
-
-
 const getPostSlugs = (directory:string) => {
   return readdirSync(directory)
 }
