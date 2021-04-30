@@ -1,18 +1,18 @@
 import dotenv from 'dotenv';
-
-dotenv.config();
-
 import {prompt} from "inquirer";
 import {readdirSync, readFileSync} from 'fs'
-import {SingleBar, Presets} from "cli-progress";
+import {Presets, SingleBar} from "cli-progress";
 // @ts-ignore
-import {yellow, green, cyan} from 'chalk';
+import {cyan, green, yellow} from 'chalk';
 import matter from 'gray-matter';
 import sgMail from '@sendgrid/mail'
+import sgClient from '@sendgrid/client'
 
 
 import {Command, flags} from '@oclif/command'
 import {join} from "path";
+
+dotenv.config();
 
 type BlogData = {
   directory: string,
@@ -26,6 +26,12 @@ export type PostItem = {
   slug: string;
   [key: string]: string | string[];
 };
+
+export type EmailRequest = {
+  method: "POST" | "get" | "GET" | "post" | "put" | "PUT" | "patch" | "PATCH" | "delete" | "DELETE" | undefined
+  url: string,
+  body: any
+}
 
 
 const getPostSlugs = (directory:string) => {
@@ -67,30 +73,53 @@ export default class Campaign extends Command {
     ]);
   }
 
-  emailClient(postItem : PostItem) {
-    console.log(postItem)
-    sgMail.setApiKey(process.env.SENDGRID_API_KEY || '')
-    const msg = {
-      to: '27matt37@gmail.com', // Change to your recipient
-      from: 'matthewcm64@gmail.com', // Change to your verified sender
-      template_id: process.env.SENDGRID_TEMPLATE_ID || '',
-      dynamic_template_data: {
-        title: postItem.title,
-        description: postItem.description,
-        slug: postItem.slug
-      }
-    }
 
-    console.log(msg)
-    sgMail
-      // @ts-ignore
-      .send(msg)
-      .then(() => {
-        console.log('Email sent')
-      })
-      .catch((error) => {
-        console.error(error)
-      })
+  async getContactEmails () {
+    sgClient.setApiKey(process.env.SENDGRID_API_KEY || '')
+    console.log(sgClient)
+    console.log(process.env.SENDGRID_API_KEY)
+
+    // Issue with this, is that it is a sample of recent 50 contacts.
+    return await sgClient.request({
+      method: 'GET',
+      url: '/v3/marketing/contacts'
+    })
+      .then(([, body]) => {
+
+        const contactEmails = body.result.map((contact: { email: any; }) => {
+          return contact.email
+        })
+
+        console.log(contactEmails)
+        return contactEmails
+      }).catch((e) => console.error(e.response.body))
+  }
+  emailClient(postItem : PostItem, contactEmails: string[]) {
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY || '')
+
+    contactEmails.forEach((email) => {
+      const msg = {
+        to: email, // Change to your recipient
+        from: 'matthewcm64@gmail.com', // Change to your verified sender
+        template_id: process.env.SENDGRID_TEMPLATE_ID || '',
+        dynamic_template_data: {
+          title: postItem.title,
+          description: postItem.description,
+          slug: postItem.slug
+        }
+      }
+
+      sgMail
+        // @ts-ignore
+        .send(msg)
+        .then(() => {
+          console.log('Email sent')
+        })
+        .catch((error) => {
+          console.error(error)
+        })
+
+    })
   }
 
   sleep (ms:number) {
@@ -121,7 +150,7 @@ export default class Campaign extends Command {
     items.content = content
     items.slug = realSlug
 
-    console.log(items)
+    this.log(JSON.stringify(items, undefined, 2))
 
 
     // console.log(fileContents)
@@ -138,9 +167,14 @@ export default class Campaign extends Command {
 
     progressBar.increment()
 
-    this.emailClient(items)
+    this.log()
+    const contactEmails = await this.getContactEmails()
+    this.emailClient(items, contactEmails)
+    this.log()
     await this.sleep(1000)
     progressBar.stop()
+
+    this.log()
 
 
 
